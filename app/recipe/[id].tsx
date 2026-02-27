@@ -4,7 +4,7 @@
  */
 
 import { Image } from 'expo-image';
-import { StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Linking } from 'react-native';
+import { StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Linking, Alert } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -95,6 +95,8 @@ export default function RecipeDetailScreen() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -114,11 +116,51 @@ export default function RecipeDetailScreen() {
       // Handle different response structures
       const recipeData = response.recipe || response.data || response;
       setRecipe(recipeData);
+      
+      // Check if recipe is already saved (has saved_id or is_favorite)
+      if (recipeData.saved_id || recipeData.is_favorite) {
+        setIsSaved(true);
+      }
     } catch (err: any) {
       console.error('Error fetching recipe details:', err);
       setError(err.message || 'Failed to load recipe details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveRecipe = async () => {
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Login Required',
+        'Please log in to save recipes to your collection.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Login', onPress: () => router.push('/login') },
+        ]
+      );
+      return;
+    }
+
+    if (!recipe) return;
+
+    const recipeId = recipe.idMeal || recipe.id || recipe.recipe_id;
+    if (!recipeId) return;
+
+    try {
+      setSaving(true);
+      await apiService.post(API_CONFIG.ENDPOINTS.RECIPES_SAVE, {
+        recipe_id: recipeId,
+        recipe_data: recipe,
+      });
+      
+      setIsSaved(true);
+      Alert.alert('Success', `"${recipe.strMeal || recipe.title || recipe.name}" saved to your recipes!`);
+    } catch (err: any) {
+      console.error('Error saving recipe:', err);
+      Alert.alert('Error', err.message || 'Failed to save recipe');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -216,9 +258,26 @@ export default function RecipeDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        {recipe.is_favorite && (
-          <Ionicons name="star" size={24} color="#FFD700" style={styles.favoriteIcon} />
-        )}
+        <TouchableOpacity 
+          onPress={handleSaveRecipe} 
+          style={[styles.saveButton, isSaved && styles.savedButton]}
+          disabled={saving || isSaved}
+        >
+          {saving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons 
+                name={isSaved ? "bookmark" : "bookmark-outline"} 
+                size={20} 
+                color="#fff" 
+              />
+              <ThemedText style={styles.saveButtonText}>
+                {isSaved ? 'Saved' : 'Save'}
+              </ThemedText>
+            </>
+          )}
+        </TouchableOpacity>
       </ThemedView>
 
       {recipeImage && (
@@ -342,8 +401,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  favoriteIcon: {
-    marginRight: 16,
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  savedButton: {
+    backgroundColor: '#4CAF50',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   heroImage: {
     width: '100%',

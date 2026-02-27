@@ -52,6 +52,12 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [savingRecipeId, setSavingRecipeId] = useState<string | number | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMorePages, setHasMorePages] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PER_PAGE = 15;
 
   const handleRecipePress = (recipe: Recipe) => {
     const recipeId = recipe.id || recipe.recipe_id || recipe.saved_id || recipe.idMeal;
@@ -128,20 +134,25 @@ export default function HomeScreen() {
     }
   };
 
-  const fetchMyRecipes = async () => {
+  const fetchMyRecipes = async (page: number = 1, append: boolean = false) => {
     try {
-      setError(null);
+      if (!append) {
+        setError(null);
+      }
       
       // Only fetch if user is authenticated
       if (!isAuthenticated) {
         setRecipes([]);
         setLoading(false);
         setRefreshing(false);
+        setLoadingMore(false);
         return;
       }
       
-      // Call my-recipes endpoint to get user's latest recipes
-      const response = await apiService.get<any>(API_CONFIG.ENDPOINTS.MY_RECIPES);
+      // Call my-recipes endpoint with pagination parameters
+      const response = await apiService.get<any>(
+        `${API_CONFIG.ENDPOINTS.MY_RECIPES}?page=${page}&per_page=${PER_PAGE}`
+      );
       
       // Debug logging
       console.log('[HomeScreen] API Response:', JSON.stringify(response, null, 2));
@@ -214,7 +225,27 @@ export default function HomeScreen() {
         console.log('[HomeScreen] No recipes found. Response structure:', Object.keys(response || {}));
       }
       
-      setRecipes(recipesArray);
+      // Handle pagination metadata from response
+      const totalPages = response.last_page || response.meta?.last_page || 
+        (response.total && response.per_page ? Math.ceil(response.total / response.per_page) : null);
+      const currentPageFromResponse = response.current_page || response.meta?.current_page || page;
+      
+      // Determine if there are more pages
+      if (totalPages !== null) {
+        setHasMorePages(currentPageFromResponse < totalPages);
+      } else {
+        // If no pagination metadata, check if we got a full page of results
+        setHasMorePages(recipesArray.length >= PER_PAGE);
+      }
+      
+      setCurrentPage(currentPageFromResponse);
+      
+      // Append or replace recipes based on the append flag
+      if (append) {
+        setRecipes(prev => [...prev, ...recipesArray]);
+      } else {
+        setRecipes(recipesArray);
+      }
     } catch (err: any) {
       console.error('Error fetching my recipes:', err);
       console.log('Endpoint called:', API_CONFIG.ENDPOINTS.MY_RECIPES);
@@ -250,7 +281,15 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
+  };
+
+  const loadMoreRecipes = async () => {
+    if (loadingMore || !hasMorePages || loading) return;
+    
+    setLoadingMore(true);
+    await fetchMyRecipes(currentPage + 1, true);
   };
 
   const fetchRecipes = async (ingredients?: string[]) => {
@@ -304,7 +343,9 @@ export default function HomeScreen() {
   useEffect(() => {
     // Fetch user's latest recipes on initial load if authenticated
     if (isAuthenticated) {
-      fetchMyRecipes();
+      setCurrentPage(1);
+      setHasMorePages(true);
+      fetchMyRecipes(1, false);
     } else {
       setLoading(false);
     }
@@ -312,8 +353,10 @@ export default function HomeScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    setCurrentPage(1);
+    setHasMorePages(true);
     if (isAuthenticated) {
-      fetchMyRecipes();
+      fetchMyRecipes(1, false);
     } else {
       setRefreshing(false);
     }
@@ -524,6 +567,35 @@ export default function HomeScreen() {
               </TouchableOpacity>
             );
           })}
+          
+          {/* Load More / Infinite Scroll */}
+          {hasMorePages && (
+            <TouchableOpacity
+              style={[styles.loadMoreButton, { borderColor: colors.tint }]}
+              onPress={loadMoreRecipes}
+              disabled={loadingMore}
+              activeOpacity={0.7}
+            >
+              {loadingMore ? (
+                <ActivityIndicator size="small" color={colors.tint} />
+              ) : (
+                <>
+                  <Ionicons name="chevron-down" size={20} color={colors.tint} />
+                  <ThemedText style={[styles.loadMoreText, { color: colors.tint }]}>
+                    Load More Recipes
+                  </ThemedText>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+          
+          {!hasMorePages && recipes.length > 0 && (
+            <ThemedView style={styles.endOfListContainer}>
+              <ThemedText style={styles.endOfListText}>
+                You've seen all {recipes.length} recipes
+              </ThemedText>
+            </ThemedView>
+          )}
         </ThemedView>
       )}
     </ParallaxScrollView>
@@ -755,5 +827,30 @@ const styles = StyleSheet.create({
   },
   chevron: {
     opacity: 0.4,
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    borderStyle: 'dashed',
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  endOfListContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    marginTop: 8,
+  },
+  endOfListText: {
+    fontSize: 13,
+    opacity: 0.5,
+    fontStyle: 'italic',
   },
 });
