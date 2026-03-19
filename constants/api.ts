@@ -5,34 +5,9 @@
  * for connecting to the Laravel backend.
  */
 
-import { Platform } from 'react-native';
-
-// Your Mac's local IP address - UPDATE THIS to match your network
-// Find it by running: ipconfig getifaddr en0
-const LOCAL_IP = '192.168.178.32';
-
-// Determine the API base URL based on environment and platform
-const getApiBaseUrl = (): string => {
-  // For development - adjust if your Laravel server runs on a different port
-  if (__DEV__) {
-    // For physical devices (iPhone/Android), use your Mac's local IP
-    // For simulators/emulators, use localhost variants
-    
-    if (Platform.OS === 'android') {
-      // Android Emulator uses 10.0.2.2 to access host machine's localhost
-      return 'http://10.0.2.2:8000/api';
-    } else if (Platform.OS === 'ios') {
-      // Use local IP for physical devices - works for both simulator and device
-      return `http://${LOCAL_IP}:8000/api`;
-    } else {
-      // Web or other platforms
-      return 'http://localhost:8000/api';
-    }
-  }
-  
-  // For production - replace with your actual production API URL
-  return 'https://your-domain.com/api';
-};
+// Hosted API (replace localhost/local IP during development)
+// Note: this app expects Laravel routes under `/api` (see `routes/api.php`).
+const getApiBaseUrl = (): string => 'https://recipes-gifa.onrender.com/api';
 
 export const API_CONFIG = {
   BASE_URL: getApiBaseUrl(),
