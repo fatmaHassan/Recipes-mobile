@@ -5,6 +5,7 @@
  */
 
 import { authService, LoginCredentials, RegisterData, User } from '@/services/auth';
+import { apiService } from '@/services/api';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 interface AuthContextType {
@@ -35,10 +36,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { isAuthenticated: authenticated, user: currentUser } = await authService.initialize();
       setIsAuthenticated(authenticated);
       setUser(currentUser);
+
+      // If we're not authenticated, ensure no stale Authorization header is sent.
+      // This is important because some Laravel setups return 401 even when the route is public
+      // but an invalid token is present.
+      if (!authenticated) {
+        apiService.setAuthToken(null);
+      }
     } catch (error) {
       console.error('Auth initialization error:', error);
       setIsAuthenticated(false);
       setUser(null);
+
+      // Defensive: if auth initialization fails, don't keep sending an auth header.
+      apiService.setAuthToken(null);
     } finally {
       setIsLoading(false);
     }

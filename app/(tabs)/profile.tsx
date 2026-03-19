@@ -10,13 +10,21 @@ import { Colors } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Alert, StyleSheet, TouchableOpacity } from 'react-native';
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAuthenticated, isLoading } = useAuth();
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+
+  useEffect(() => {
+    // Profile is an account-specific screen, so keep it behind authentication.
+    if (isLoading) return;
+    if (!isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [isAuthenticated, isLoading]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -34,7 +42,7 @@ export default function ProfileScreen() {
             try {
               await logout();
               router.replace('/login');
-            } catch (error) {
+            } catch {
               Alert.alert('Error', 'Failed to logout');
             }
           },

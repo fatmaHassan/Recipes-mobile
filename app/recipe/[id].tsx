@@ -95,6 +95,7 @@ export default function RecipeDetailScreen() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -105,25 +106,63 @@ export default function RecipeDetailScreen() {
   }, [id]);
 
   const fetchRecipeDetails = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+    const url = getApiUrlWithId(API_CONFIG.ENDPOINTS.RECIPES_SHOW, id);
+    const endpoint = `${API_CONFIG.ENDPOINTS.RECIPES_SHOW}/${id}`;
 
-      // Try to get recipe from API
-      const url = getApiUrlWithId(API_CONFIG.ENDPOINTS.RECIPES_SHOW, id);
-      const response = await apiService.get<any>(`${API_CONFIG.ENDPOINTS.RECIPES_SHOW}/${id}`);
-      
+    const fetchOnce = async () => {
+      const response = await apiService.get<any>(endpoint);
+
       // Handle different response structures
       const recipeData = response.recipe || response.data || response;
+
+      // If the backend redirected to an HTML login page, our apiService will return `{}`.
+      // Treat that as an auth failure so we can fall back to the public web UI.
+      const isEmptyObject =
+        recipeData &&
+        typeof recipeData === 'object' &&
+        !Array.isArray(recipeData) &&
+        Object.keys(recipeData).length === 0;
+
+      if (isEmptyObject) {
+        const authErr: any = new Error('Authentication Required');
+        authErr.status = 401;
+        throw authErr;
+      }
+
       setRecipe(recipeData);
-      
+
       // Check if recipe is already saved (has saved_id or is_favorite)
       if (recipeData.saved_id || recipeData.is_favorite) {
         setIsSaved(true);
       }
+    };
+
+    try {
+      setLoading(true);
+      setError(null);
+      setErrorStatus(null);
+      setIsSaved(false);
+
+      // Try to get recipe from API
+      await fetchOnce();
     } catch (err: any) {
+      // If we got a 401 due to a stale/invalid token, retry once without auth.
+      if (err?.status === 401) {
+        try {
+          apiService.setAuthToken(null);
+          setIsSaved(false);
+          await fetchOnce();
+          return;
+        } catch (retryErr: any) {
+          err = retryErr;
+        }
+      }
+
       console.error('Error fetching recipe details:', err);
-      setError(err.message || 'Failed to load recipe details');
+      const status = err?.status;
+      const message = err?.message || 'Failed to load recipe details';
+      setErrorStatus(status ?? null);
+      setError(`${message}${status ? ` (Status ${status})` : ''}\n\nAPI URL: ${url}`);
     } finally {
       setLoading(false);
     }
@@ -181,6 +220,7 @@ export default function RecipeDetailScreen() {
   }
 
   if (error || !recipe) {
+    const webRecipeUrl = `${API_CONFIG.BASE_URL.replace(/\/api$/, '')}/recipes/${id}`;
     return (
       <ThemedView style={styles.container}>
         <ThemedView style={styles.header}>
@@ -197,6 +237,14 @@ export default function RecipeDetailScreen() {
             onPress={() => router.back()}>
             <ThemedText style={styles.buttonText}>Go Back</ThemedText>
           </TouchableOpacity>
+
+          {errorStatus === 401 && (
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.background, borderColor: colors.tint, borderWidth: 1 }]}
+              onPress={() => Linking.openURL(webRecipeUrl)}>
+              <ThemedText style={[styles.buttonText, { color: colors.tint }]}>Open in Web</ThemedText>
+            </TouchableOpacity>
+          )}
         </ThemedView>
       </ThemedView>
     );

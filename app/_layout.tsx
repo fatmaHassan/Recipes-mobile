@@ -20,16 +20,13 @@ function RootLayoutNav() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-
-    if (!isAuthenticated && !inAuthGroup) {
-      // Redirect to login if not authenticated
-      router.replace('/login');
-    } else if (isAuthenticated && inAuthGroup) {
-      // Redirect to tabs if authenticated and in auth group
+    // If user is authenticated and they are on login/register, send them to the main tabs.
+    // Important: we do NOT force unauthenticated users to sign in so guests can browse.
+    const inAuthRoutes = segments[0] === 'login' || segments[0] === 'register';
+    if (isAuthenticated && inAuthRoutes) {
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, isLoading, segments]);
+  }, [isAuthenticated, isLoading, segments, router]);
 
   return (
     <Stack>
